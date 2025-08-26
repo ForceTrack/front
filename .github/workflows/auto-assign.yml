@@ -53,9 +53,25 @@ jobs:
           # Asignar el issue al miembro con menos carga
           if gh issue edit $ISSUE_NUMBER --add-assignee $BEST_MEMBER; then
             echo "✅ Issue #$ISSUE_NUMBER successfully assigned to $BEST_MEMBER"
+            
+            # Verificar que la asignación fue exitosa
+            ASSIGNED=$(gh issue view $ISSUE_NUMBER --json assignees --jq '.assignees[].login' | grep -w "$BEST_MEMBER" || echo "")
+            if [ ! -z "$ASSIGNED" ]; then
+              echo "✅ Verification: $BEST_MEMBER is now assigned to issue #$ISSUE_NUMBER"
+            else
+              echo "⚠️ Warning: Assignment might not have taken effect"
+            fi
           else
             echo "❌ Failed to assign to $BEST_MEMBER"
           fi
+
+      - name: Add to Project (if configured)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "ℹ️ Note: If you want this issue to also be assigned in GitHub Projects,"
+          echo "you'll need to configure the project automation separately or add"
+          echo "additional steps to update the project board."
 
       - name: Complete job
         run: echo "Auto-assignment workflow completed"
