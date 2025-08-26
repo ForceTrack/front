@@ -12,45 +12,52 @@ jobs:
   assign-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js (opcional si quieres lógica más avanzada)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Assign issue automatically
+      - name: Assign issue automatically (round-robin + solo asignables)
+        uses: actions/github-script@v7
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEAM_MEMBERS: "AtomicBanana23,marigj12,Scarkat,gaelcadena5"  # Removí gaelcadena5 temporalmente
-        run: |
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-          
-          echo "Issue number: $ISSUE_NUMBER"
-          
-          # Convertir la lista de miembros en un array
-          IFS=',' read -ra MEMBERS <<< "$TEAM_MEMBERS"
-          
-          # Obtener un índice usando el número del issue
-          INDEX=$((ISSUE_NUMBER % ${#MEMBERS[@]}))
-          MEMBER=${MEMBERS[$INDEX]}
-          
-          echo "Attempting to assign issue #$ISSUE_NUMBER to $MEMBER"
-          
-          # Intentar asignar el issue con manejo de errores
-          if gh issue edit $ISSUE_NUMBER --add-assignee $MEMBER; then
-            echo "✅ Issue #$ISSUE_NUMBER successfully assigned to $MEMBER"
-          else
-            echo "❌ Failed to assign to $MEMBER. Trying to assign to issue creator instead."
-            # Fallback: asignar al creador del issue
-            CREATOR=${{ github.event.issue.user.login }}
-            if gh issue edit $ISSUE_NUMBER --add-assignee $CREATOR; then
-              echo "✅ Issue #$ISSUE_NUMBER assigned to creator: $CREATOR"
-            else
-              echo "❌ Could not assign to anyone. Issue will remain unassigned."
-            fi
-          fi
+          TEAM_MEMBERS: AtomicBanana23, marigj12, Scarkat, Joaquower
+        with:
+          script: |
+            const team = (process.env.TEAM_MEMBERS || "")
+              .split(",")
+              .map(s => s.trim())
+              .filter(Boolean);
 
-      - name: Complete job
-        run: echo "Auto-assignment workflow completed"
+            const { owner, repo } = context.repo;
+            const issueNumber = context.payload.issue.number;
+
+            // Usuarios asignables del repo
+            const assignables = await github.paginate(
+              github.rest.issues.listAssignees,
+              { owner, repo, per_page: 100 }
+            );
+            const assignableSet = new Set(assignables.map(u => u.login.toLowerCase()));
+
+            // Round-robin iniciando por el número del issue
+            let assignee = null;
+            if (team.length > 0) {
+              const start = issueNumber % team.length;
+              for (let i = 0; i < team.length; i++) {
+                const candidate = team[(start + i) % team.length];
+                if (assignableSet.has(candidate.toLowerCase())) {
+                  assignee = candidate;
+                  break;
+                }
+              }
+            }
+
+            // Fallback: si nadie del team es asignable, asigna al creador
+            // Si prefieres dejarlo SIN asignar, comenta las 2 líneas siguientes.
+            if (!assignee) {
+              assignee = context.payload.issue.user.login;
+            }
+
+            await github.rest.issues.addAssignees({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              assignees: [assignee],
+            });
+            core.info(`Assigned #${issueNumber} to ${assignee}`);
