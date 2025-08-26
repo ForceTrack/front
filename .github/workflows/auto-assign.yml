@@ -27,16 +27,30 @@ jobs:
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           
+          echo "🔍 Starting assignment process for issue #$ISSUE_NUMBER"
+          echo "📋 Repository: ${{ github.repository }}"
+          echo "👤 Issue creator: ${{ github.event.issue.user.login }}"
+          
+          # Verificar que gh CLI funciona
+          echo "🔧 Testing GitHub CLI..."
+          gh --version
+          
+          # Mostrar el issue actual antes de modificar
+          echo "📄 Current issue details:"
+          gh issue view $ISSUE_NUMBER || echo "❌ Could not view issue"
+          
           echo "🎯 Finding team member with least assigned issues..."
           
           # Convertir la lista de miembros en un array
           IFS=',' read -ra MEMBERS <<< "$TEAM_MEMBERS"
+          echo "👥 Team members: ${MEMBERS[@]}"
           
           MIN_ISSUES=999999
           BEST_MEMBER=""
           
           # Revisar cada miembro del equipo
           for MEMBER in "${MEMBERS[@]}"; do
+            echo "🔍 Checking $MEMBER..."
             # Contar issues abiertos asignados a este miembro
             ISSUE_COUNT=$(gh issue list --assignee $MEMBER --state open --json number | jq length)
             echo "📊 $MEMBER has $ISSUE_COUNT open issues"
@@ -45,24 +59,36 @@ jobs:
             if [ $ISSUE_COUNT -lt $MIN_ISSUES ]; then
               MIN_ISSUES=$ISSUE_COUNT
               BEST_MEMBER=$MEMBER
+              echo "🏆 New best candidate: $BEST_MEMBER"
             fi
           done
           
-          echo "🏆 Selected $BEST_MEMBER (has $MIN_ISSUES open issues)"
+          echo "🎖️ Final selection: $BEST_MEMBER (has $MIN_ISSUES open issues)"
           
           # Asignar el issue al miembro con menos carga
+          echo "⚡ Executing assignment command..."
           if gh issue edit $ISSUE_NUMBER --add-assignee $BEST_MEMBER; then
-            echo "✅ Issue #$ISSUE_NUMBER successfully assigned to $BEST_MEMBER"
+            echo "✅ Assignment command completed successfully"
+            
+            # Esperar un momento para que GitHub procese
+            echo "⏳ Waiting for GitHub to process..."
+            sleep 3
             
             # Verificar que la asignación fue exitosa
+            echo "🔎 Verifying assignment..."
+            gh issue view $ISSUE_NUMBER --json assignees --jq '.assignees'
+            
             ASSIGNED=$(gh issue view $ISSUE_NUMBER --json assignees --jq '.assignees[].login' | grep -w "$BEST_MEMBER" || echo "")
             if [ ! -z "$ASSIGNED" ]; then
-              echo "✅ Verification: $BEST_MEMBER is now assigned to issue #$ISSUE_NUMBER"
+              echo "✅ SUCCESS: $BEST_MEMBER is now assigned to issue #$ISSUE_NUMBER"
             else
-              echo "⚠️ Warning: Assignment might not have taken effect"
+              echo "⚠️ WARNING: Assignment command succeeded but verification failed"
+              echo "🔍 All current assignees:"
+              gh issue view $ISSUE_NUMBER --json assignees --jq '.assignees[].login'
             fi
           else
-            echo "❌ Failed to assign to $BEST_MEMBER"
+            echo "❌ Assignment command failed"
+            exit 1
           fi
 
       - name: Add to Project (if configured)
