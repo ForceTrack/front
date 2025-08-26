@@ -23,7 +23,7 @@ jobs:
       - name: Assign issue automatically
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEAM_MEMBERS: "AtomicBanana23,marigj12,Scarkat,Joaquower"  # Removí gaelcadena5 temporalmente
+          TEAM_MEMBERS: "AtomicBanana23,marigj12,Scarkat,gaelcadena5"  # Removí gaelcadena5 temporalmente
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           
