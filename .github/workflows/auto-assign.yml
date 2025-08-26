@@ -23,33 +23,38 @@ jobs:
       - name: Assign issue automatically
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEAM_MEMBERS: "AtomicBanana23,marigj12,Scarkat,Joaquower"  # Removí gaelcadena5 temporalmente
+          TEAM_MEMBERS: "AtomicBanana23,marigj12,Scarkat,Joaquower"
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           
-          echo "Issue number: $ISSUE_NUMBER"
+          echo "🎯 Finding team member with least assigned issues..."
           
           # Convertir la lista de miembros en un array
           IFS=',' read -ra MEMBERS <<< "$TEAM_MEMBERS"
           
-          # Obtener un índice usando el número del issue
-          INDEX=$((ISSUE_NUMBER % ${#MEMBERS[@]}))
-          MEMBER=${MEMBERS[$INDEX]}
+          MIN_ISSUES=999999
+          BEST_MEMBER=""
           
-          echo "Attempting to assign issue #$ISSUE_NUMBER to $MEMBER"
-          
-          # Intentar asignar el issue con manejo de errores
-          if gh issue edit $ISSUE_NUMBER --add-assignee $MEMBER; then
-            echo "✅ Issue #$ISSUE_NUMBER successfully assigned to $MEMBER"
-          else
-            echo "❌ Failed to assign to $MEMBER. Trying to assign to issue creator instead."
-            # Fallback: asignar al creador del issue
-            CREATOR=${{ github.event.issue.user.login }}
-            if gh issue edit $ISSUE_NUMBER --add-assignee $CREATOR; then
-              echo "✅ Issue #$ISSUE_NUMBER assigned to creator: $CREATOR"
-            else
-              echo "❌ Could not assign to anyone. Issue will remain unassigned."
+          # Revisar cada miembro del equipo
+          for MEMBER in "${MEMBERS[@]}"; do
+            # Contar issues abiertos asignados a este miembro
+            ISSUE_COUNT=$(gh issue list --assignee $MEMBER --state open --json number | jq length)
+            echo "📊 $MEMBER has $ISSUE_COUNT open issues"
+            
+            # Si este miembro tiene menos issues, es el nuevo candidato
+            if [ $ISSUE_COUNT -lt $MIN_ISSUES ]; then
+              MIN_ISSUES=$ISSUE_COUNT
+              BEST_MEMBER=$MEMBER
             fi
+          done
+          
+          echo "🏆 Selected $BEST_MEMBER (has $MIN_ISSUES open issues)"
+          
+          # Asignar el issue al miembro con menos carga
+          if gh issue edit $ISSUE_NUMBER --add-assignee $BEST_MEMBER; then
+            echo "✅ Issue #$ISSUE_NUMBER successfully assigned to $BEST_MEMBER"
+          else
+            echo "❌ Failed to assign to $BEST_MEMBER"
           fi
 
       - name: Complete job
